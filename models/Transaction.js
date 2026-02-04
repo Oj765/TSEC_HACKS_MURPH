@@ -2,13 +2,13 @@ const mongoose = require('mongoose');
 
 const TransactionSchema = new mongoose.Schema(
   {
-    userId: { type: mongoose.Schema.Types.ObjectId, required: true, refPath: 'userModel' },
+    userId: { type: String, required: true, refPath: 'userModel' }, // Changed to String for custom IDs
     userModel: {
       type: String,
       required: true,
       enum: ['Student', 'Teacher'],
     },
-    sessionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Session' },
+    sessionId: { type: String, ref: 'Session' }, // Changed to String for custom IDs
     type: {
       type: String,
       enum: ['lock', 'debit', 'refund', 'credit'],
@@ -26,4 +26,5 @@ const TransactionSchema = new mongoose.Schema(
 );
 
 module.exports = mongoose.model('Transaction', TransactionSchema);
+
 

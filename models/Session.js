@@ -1,9 +1,16 @@
 const mongoose = require('mongoose');
+const crypto = require('crypto');
 
 const SessionSchema = new mongoose.Schema(
   {
-    studentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Student', required: true },
-    teacherId: { type: mongoose.Schema.Types.ObjectId, ref: 'Teacher', required: true },
+    _id: {
+      type: String,
+      default: function () {
+        return 'ses_' + crypto.randomBytes(5).toString('hex');
+      },
+    },
+    studentId: { type: String, ref: 'Student' }, // Optional for scheduled sessions
+    teacherId: { type: String, ref: 'Teacher', required: true },
     topic: { type: String, required: true },
     startTime: { type: Date, required: true },
     endTime: { type: Date },
@@ -14,12 +21,14 @@ const SessionSchema = new mongoose.Schema(
     totalCost: { type: Number, default: 0 },
     status: {
       type: String,
-      enum: ['active', 'completed', 'cancelled'],
-      default: 'active',
+      enum: ['scheduled', 'active', 'completed', 'cancelled'],
+      default: 'scheduled',
     },
   },
-  { timestamps: true }
+  { timestamps: true, _id: false }
 );
 
 module.exports = mongoose.model('Session', SessionSchema);
+
+
 

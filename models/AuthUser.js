@@ -10,7 +10,7 @@ const AuthUserSchema = new mongoose.Schema(
       required: true,
     },
     profileId: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: String, // Changed from ObjectId to String to support custom IDs (tea_xxxxx, stu_xxxxx)
       refPath: 'profileModel',
     },
     profileModel: {
@@ -22,4 +22,5 @@ const AuthUserSchema = new mongoose.Schema(
 );
 
 module.exports = mongoose.model('AuthUser', AuthUserSchema);
+
 

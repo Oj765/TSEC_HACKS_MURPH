@@ -12,6 +12,7 @@ const bcrypt = require('bcryptjs');
 const Student = require('./models/Student');
 const Teacher = require('./models/Teacher');
 const Session = require('./models/Session');
+const LiveSession = require('./models/LiveSession');
 const Review = require('./models/Review');
 const Transaction = require('./models/Transaction');
 const AuthUser = require('./models/AuthUser');
@@ -187,31 +188,46 @@ app.get('/api/teachers/:id/dashboard', async (req, res) => {
       return res.status(404).json({ message: 'Teacher not found' });
     }
 
-    const sessions = await Session.find({ teacherId: id }).lean();
+    const historicalSessions = await Session.find({ teacherId: id }).lean();
+    const liveSessions = await LiveSession.find({ teacherId: id }).lean();
 
-    const earningsData = await Transaction.aggregate([
-      {
-        $match: {
-          userId: new mongoose.Types.ObjectId(id),
-          userModel: 'Teacher',
-          type: 'credit',
-          status: 'completed',
+    // Merge both types of sessions
+    const sessions = [...historicalSessions, ...liveSessions];
+
+    // Handle both MongoDB ObjectIds and custom string IDs
+    let earningsData = [];
+    try {
+      const matchUserId = mongoose.Types.ObjectId.isValid(id) && id.length === 24
+        ? new mongoose.Types.ObjectId(id)
+        : id;
+
+      earningsData = await Transaction.aggregate([
+        {
+          $match: {
+            userId: matchUserId,
+            userModel: 'Teacher',
+            type: 'credit',
+            status: 'completed',
+          },
         },
-      },
-      {
-        $group: {
-          _id: { $dateToString: { format: '%a', date: '$timestamp' } },
-          amount: { $sum: '$amount' },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } },
+            amount: { $sum: '$amount' },
+          },
         },
-      },
-      {
-        $project: {
-          _id: 0,
-          name: '$_id',
-          amount: 1,
+        {
+          $project: {
+            _id: 0,
+            name: '$_id',
+            amount: 1,
+          },
         },
-      },
-    ]);
+      ]);
+    } catch (aggErr) {
+      console.warn('Earnings aggregation failed:', aggErr.message);
+      // Continue without earnings data
+    }
 
     const totalStudents = await Session.distinct('studentId', { teacherId: id });
 
@@ -249,6 +265,54 @@ app.get('/api/users/:id/transactions', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get all scheduled sessions
+app.get('/api/sessions', async (req, res) => {
+  try {
+    const sessions = await LiveSession.find({ status: { $in: ['scheduled', 'live'] } })
+      .populate('teacherId', 'name subjects ratingAvg')
+      .sort({ startTime: 1 })
+      .limit(20)
+      .lean();
+    res.json(sessions);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error fetching sessions' });
+  }
+});
+
+// Create a new session (scheduled by teacher) - saved to LiveSession collection
+app.post('/api/sessions', async (req, res) => {
+  try {
+    const { teacherId, topic, date, time, duration, ratePerMinute, description, languages } = req.body;
+
+    if (!teacherId || !topic || !date || !time || !duration || !ratePerMinute) {
+      return res.status(400).json({ message: 'Missing required fields' });
+    }
+
+    // Combine date and time to ISO string
+    const startDateTime = new Date(`${date}T${time}`);
+    const endDateTime = new Date(startDateTime.getTime() + duration * 60000);
+
+    const session = await LiveSession.create({
+      teacherId,
+      studentId: null, // No student yet
+      topic,
+      startTime: startDateTime,
+      endTime: endDateTime,
+      durationMinutes: parseInt(duration),
+      ratePerMinute: parseFloat(ratePerMinute),
+      status: 'scheduled',
+      description,
+      languages
+    });
+
+    res.status(201).json(session);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error creating session' });
   }
 });
 

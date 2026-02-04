@@ -2,9 +2,9 @@ const mongoose = require('mongoose');
 
 const ReviewSchema = new mongoose.Schema(
   {
-    sessionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Session', required: true },
-    studentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Student', required: true },
-    teacherId: { type: mongoose.Schema.Types.ObjectId, ref: 'Teacher', required: true },
+    sessionId: { type: String, ref: 'Session', required: true }, // Changed to String for custom IDs
+    studentId: { type: String, ref: 'Student', required: true }, // Changed to String for custom IDs
+    teacherId: { type: String, ref: 'Teacher', required: true }, // Changed to String for custom IDs
     rating: { type: Number, required: true }, // 1-5
     comment: { type: String },
     sessionDuration: { type: Number, default: 0 }, // minutes
@@ -19,4 +19,5 @@ const ReviewSchema = new mongoose.Schema(
 );
 
 module.exports = mongoose.model('Review', ReviewSchema);
+
 

@@ -29,6 +29,20 @@ export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  useEffect(() => {
+    const storedUser = localStorage.getItem('murph:user');
+    if (storedUser) {
+      try {
+        const user = JSON.parse(storedUser);
+        if (user.role) {
+          setRole(user.role as UserRole);
+        }
+      } catch (e) {
+        console.error("Failed to restore session", e);
+      }
+    }
+  }, []);
+
   const handleLogin = (selectedRole: UserRole) => {
     setRole(selectedRole);
     if (selectedRole === 'student') navigate('/');
