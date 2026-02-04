@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Wallet, Lock, Plus, ArrowUpRight, ArrowDownLeft, ShieldCheck } from 'lucide-react';
-import { motion } from 'motion/react';
+import { useNavigate } from 'react-router-dom';
+import { Wallet, Lock, Plus, ArrowUpRight, ArrowDownLeft, ShieldCheck, Loader2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
 type Transaction = {
   _id: string;
@@ -8,42 +9,78 @@ type Transaction = {
   type: 'lock' | 'debit' | 'refund' | 'credit';
   amount: number;
   status: 'pending' | 'completed' | 'failed';
+  description?: string;
 };
 
 export function WalletPage() {
+  const navigate = useNavigate();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [balance, setBalance] = useState(145.3);
-  const [locked, setLocked] = useState(25);
-
-  // TODO: replace with real logged-in student id
-  const studentId = 'REPLACE_WITH_REAL_STUDENT_ID';
+  const [balance, setBalance] = useState(0);
+  const [locked, setLocked] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<'student' | 'teacher' | null>(null);
 
   useEffect(() => {
-    async function fetchWallet() {
-      try {
-        const [txRes, studentRes] = await Promise.all([
-          fetch(`http://localhost:5000/api/users/${studentId}/transactions?model=Student`),
-          fetch(`http://localhost:5000/api/students/${studentId}/dashboard`),
-        ]);
-
-        if (txRes.ok) {
-          const txJson = await txRes.json();
-          setTransactions(txJson);
-        }
-
-        if (studentRes.ok) {
-          const studentJson = await studentRes.json();
-          setBalance(studentJson.stats.walletBalance ?? 0);
-        }
-      } catch (err) {
-        console.error(err);
-      }
+    const userStr = localStorage.getItem('murph:user');
+    if (userStr) {
+      const user = JSON.parse(userStr);
+      setUserId(user.profileId); // Use profileId (Student/Teacher ID)
+      setUserRole(user.role);
     }
+  }, []);
 
-    if (studentId !== 'REPLACE_WITH_REAL_STUDENT_ID') {
+  const fetchWallet = async () => {
+    if (!userId) return;
+    try {
+      setLoading(true);
+      // Determine endpoint based on role
+      const dashboardEndpoint = userRole === 'teacher'
+        ? `http://localhost:5000/api/teachers/${userId}/dashboard`
+        : `http://localhost:5000/api/students/${userId}/dashboard`;
+
+      // userModel param for transactions
+      const modelParam = userRole === 'teacher' ? 'Teacher' : 'Student';
+
+      const [txRes, dashRes] = await Promise.all([
+        fetch(`http://localhost:5000/api/users/${userId}/transactions?model=${modelParam}`),
+        fetch(dashboardEndpoint),
+      ]);
+
+      if (txRes.ok) {
+        const txJson = await txRes.json();
+        setTransactions(txJson);
+      }
+
+      if (dashRes.ok) {
+        const dashJson = await dashRes.json();
+        // Teacher dashboard structure is distinct from Student
+        if (userRole === 'teacher') {
+          // For teachers, relying on what server returns. Assuming 'earnings' is effectively balance for now, 
+          // but 'walletBalance' might not be on teacher summary yet. 
+          // Let's assume server dashboard does NOT return walletBalance for teachers typically, 
+          // but we will patch server if needed. For now using 0 fallback.
+          setBalance(dashJson.teacher?.walletBalance || 0);
+        } else {
+          setBalance(dashJson.stats?.walletBalance || 0);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (userId) {
       fetchWallet();
     }
-  }, [studentId]);
+  }, [userId, userRole]);
+
+  if (!userId) {
+    return <div className="pt-24 text-center text-slate-400">Please log in to view your wallet.</div>;
+  }
 
   return (
     <div className="pt-24 pb-20 px-4 max-w-5xl mx-auto">
@@ -54,7 +91,7 @@ export function WalletPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
         {/* Balance Card */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           className="md:col-span-2 relative overflow-hidden bg-gradient-to-br from-violet-600 to-blue-700 rounded-3xl p-8 shadow-2xl shadow-violet-600/20"
@@ -62,13 +99,17 @@ export function WalletPage() {
           <div className="absolute top-0 right-0 p-8 opacity-10">
             <Wallet className="w-32 h-32" />
           </div>
+
           <div className="relative z-10 flex flex-col h-full justify-between gap-12">
             <div>
               <span className="text-violet-100/80 text-sm font-medium uppercase tracking-wider">Available Balance</span>
               <h2 className="text-5xl font-bold text-white mt-2">${balance.toFixed(2)}</h2>
             </div>
             <div className="flex gap-4">
-              <button className="bg-white text-blue-700 px-6 py-3 rounded-xl font-bold hover:bg-slate-100 transition-colors flex items-center gap-2 shadow-lg">
+              <button
+                onClick={() => navigate('/wallet/checkout')}
+                className="bg-white text-blue-700 px-6 py-3 rounded-xl font-bold hover:bg-slate-100 transition-colors flex items-center gap-2 shadow-lg"
+              >
                 <Plus className="w-5 h-5" /> Add Funds
               </button>
               <button className="bg-white/20 backdrop-blur-md text-white px-6 py-3 rounded-xl font-bold hover:bg-white/30 transition-colors">
@@ -79,7 +120,7 @@ export function WalletPage() {
         </motion.div>
 
         {/* Locked Funds */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.1 }}
@@ -136,18 +177,17 @@ export function WalletPage() {
                     })}
                   </td>
                   <td className="px-6 py-4 text-white font-medium">
-                    {tx.type === 'credit'
+                    {tx.description || (tx.type === 'credit'
                       ? 'Wallet Top-up'
                       : tx.type === 'debit'
-                      ? 'Learning Session'
-                      : tx.type === 'refund'
-                      ? 'Refund'
-                      : 'Locked for Session'}
+                        ? 'Learning Session'
+                        : tx.type === 'refund'
+                          ? 'Refund'
+                          : 'Locked for Session')}
                   </td>
                   <td className="px-6 py-4">
-                    <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${
-                      tx.status === 'completed' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'
-                    }`}>
+                    <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${tx.status === 'completed' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'
+                      }`}>
                       {tx.status}
                     </span>
                   </td>

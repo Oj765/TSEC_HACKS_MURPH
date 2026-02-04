@@ -15,8 +15,9 @@ export function Navbar({ role, onLogout }: NavbarProps) {
   const isActive = (path: string) => currentPage === path;
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-[#0a0f2b]/80 backdrop-blur-md border-b border-slate-800">
+    <nav className="fixed top-0 left-0 right-0 z-[100] bg-[#0a0f2b]/80 backdrop-blur-md border-b border-slate-800">
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+        {/* LOGO */}
         <div
           className="flex items-center gap-2 cursor-pointer group"
           onClick={() => navigate('/')}
@@ -32,6 +33,7 @@ export function Navbar({ role, onLogout }: NavbarProps) {
           </span>
         </div>
 
+        {/* NAV LINKS */}
         <div className="hidden md:flex items-center gap-8 text-slate-300 text-sm font-medium">
           {role === 'student' && (
             <>
@@ -58,8 +60,18 @@ export function Navbar({ role, onLogout }: NavbarProps) {
               Teacher Dashboard
             </button>
           )}
+
+          {/* AI CHATBOT TRIGGER */}
+          <button
+            onClick={() => navigate('/ask-ai')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all ${isActive('/ask-ai') ? 'bg-violet-600 border-violet-500 text-white shadow-lg shadow-violet-600/30' : 'bg-slate-800/50 border-slate-700 text-violet-400 hover:bg-slate-800 hover:border-violet-500/50'}`}
+          >
+            <Sparkles className="w-4 h-4" />
+            <span className="font-bold text-xs uppercase tracking-wide">Ask AI</span>
+          </button>
         </div>
 
+        {/* RIGHT ACTIONS */}
         <div className="flex items-center gap-4">
           <button
             onClick={onLogout}

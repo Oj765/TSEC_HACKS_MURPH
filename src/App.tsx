@@ -9,15 +9,18 @@ import { ProtectedLayout, TeacherLayout, PublicLayout } from './components/layou
 import { LandingPage } from './components/LandingPage';
 import { AuthPage } from './components/AuthPage';
 import { WalletPage } from './components/WalletPage';
+import { CheckoutPage } from './components/CheckoutPage';
 import { LiveSession } from './components/LiveSession';
 import { SummaryPage } from './components/SummaryPage';
 import { TeacherDashboard } from './components/TeacherDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
-import { ChatDiscovery } from './components/ChatDiscovery'; // "Explore" for now
+import { ChatDiscovery } from './components/ChatDiscovery';
+import { SessionCheck } from './components/SessionCheck';
+import { AiChatPage } from './components/AiChatPage';
 import {
-  ExplorePage, AiChatPage, RegisterPage,
+  ExplorePage, RegisterPage,
   ProfilePage, SessionHistoryPage,
-  SessionDetails, SessionCheck, SessionReview,
+  SessionDetails, SessionReview,
   TeacherSessions, TeacherEarnings, TeacherProfile
 } from './components/PlaceholderPages';
 
@@ -25,7 +28,7 @@ type UserRole = 'guest' | 'student' | 'teacher' | 'admin';
 
 export default function App() {
   const [role, setRole] = useState<UserRole>('guest');
-  const [sessionData, setSessionData] = useState<{ duration: number, cost: number } | null>(null);
+  const [sessionData, setSessionData] = useState<{ duration: number, cost: number, sessionId?: string, teacherName?: string } | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -55,9 +58,9 @@ export default function App() {
     navigate('/login');
   };
 
-  const handleEndSession = (data: { duration: number, cost: number }) => {
+  const handleEndSession = (data: { duration: number, cost: number, sessionId?: string, teacherName?: string }) => {
     setSessionData(data);
-    navigate(`/session/demo-id/summary`); // Using demo ID for now
+    navigate(`/session/${data.sessionId || 'demo'}/summary`);
   };
 
   return (
@@ -80,7 +83,7 @@ export default function App() {
                 />
               } />
               <Route path="/explore" element={<ExplorePage />} />
-              <Route path="/ai-chat" element={<AiChatPage />} />
+              <Route path="/ask-ai" element={<AiChatPage />} />
               <Route path="/login" element={<AuthPage onLogin={handleLogin} />} />
               <Route path="/register" element={<RegisterPage />} />
             </Route>
@@ -88,6 +91,7 @@ export default function App() {
             {/* --- Protected User Routes --- */}
             <Route element={<ProtectedLayout role={role} onLogout={handleLogout} />}>
               <Route path="/wallet" element={<WalletPage />} />
+              <Route path="/wallet/checkout" element={<CheckoutPage />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/sessions" element={<SessionHistoryPage />} />
               <Route path="/chat" element={<ChatDiscovery onStartSession={() => navigate('/session/demo-123')} />} />

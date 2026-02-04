@@ -54,7 +54,7 @@ function SessionCard({ id, title, teacher, avatar, rating, price, date, time }: 
           <span className="text-lg font-bold text-white">${price.toFixed(2)}</span>
         </div>
         <button
-          onClick={() => navigate(`/session/${id}/live`)}
+          onClick={() => navigate(`/session/${id}/check`)}
           className="bg-violet-600 hover:bg-violet-500 text-white p-2.5 rounded-xl transition-all shadow-lg shadow-violet-600/20 active:scale-95"
         >
           <PlayCircle className="w-5 h-5" />
