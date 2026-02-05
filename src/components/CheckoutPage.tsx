@@ -116,7 +116,6 @@ export function CheckoutPage() {
 
     const handleConfirm = async () => {
         setProcessing(true);
-        setError(null);
         try {
             const res = await fetch('http://localhost:5000/api/wallet/confirm', {
                 method: 'POST',
@@ -129,15 +128,11 @@ export function CheckoutPage() {
                 })
             });
 
-            const data = await res.json();
-
-            if (res.status === 200 || res.status === 201) {
+            if (res.ok) {
                 alert("Payment Confirmed! Funds added.");
                 navigate('/wallet');
-            } else if (res.status === 202) {
-                setError(`Payment is ${data.status || 'processing'}. Please wait a moment and try again.`);
             } else {
-                setError(data.message || "Confirmation failed. Please check your payment tab.");
+                setError("Confirmation failed. Please try again.");
             }
         } catch (e) {
             setError("Network error validating payment");
@@ -201,7 +196,7 @@ export function CheckoutPage() {
                         </button>
                     </div>
                 ) : (
-                    <div className="space-y-6 text-center py-8 relative z-10">
+                    <div className="space-y-6 text-center py-8">
                         <div className="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto animate-pulse">
                             <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
                         </div>
@@ -212,10 +207,7 @@ export function CheckoutPage() {
                             </p>
                         </div>
                         {error && (
-                            <div className={`text-sm p-3 rounded-lg text-center ${error.toLowerCase().includes('processing') || error.toLowerCase().includes('initiated')
-                                    ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-                                    : 'bg-red-500/10 text-red-500 border border-red-500/20'
-                                }`}>
+                            <div className="bg-red-500/10 text-red-500 text-sm p-3 rounded-lg text-center">
                                 {error}
                             </div>
                         )}

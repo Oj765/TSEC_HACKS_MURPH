@@ -66,37 +66,13 @@ function SessionCard({ id, title, teacher, avatar, rating, price, date, time }: 
 
 export function LandingPage({ onStartSession, onExplore }: { onStartSession: () => void, onExplore: () => void }) {
   const [sessions, setSessions] = useState<any[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [showResults, setShowResults] = useState(false);
-  const navigate = useNavigate();
 
   useEffect(() => {
-    const delayDebounceFn = setTimeout(() => {
-      if (searchQuery.trim().length > 1) {
-        fetch(`http://localhost:5000/api/search?q=${encodeURIComponent(searchQuery)}`)
-          .then(res => res.json())
-          .then(data => {
-            setSearchResults(data);
-            setShowResults(true);
-          })
-          .catch(err => console.error(err));
-      } else {
-        setSearchResults([]);
-        setShowResults(false);
-      }
-    }, 300);
-
-    return () => clearTimeout(delayDebounceFn);
-  }, [searchQuery]);
-
-  const handleManualSearch = () => {
-    if (searchQuery.trim()) {
-      navigate(`/chat?q=${encodeURIComponent(searchQuery)}`);
-    } else {
-      onExplore();
-    }
-  };
+    fetch('http://localhost:5000/api/sessions')
+      .then(res => res.json())
+      .then(data => setSessions(data))
+      .catch(err => console.error("Failed to load sessions", err));
+  }, []);
 
   return (
     <div className="pt-24 pb-20 px-4 max-w-7xl mx-auto overflow-hidden">
@@ -135,53 +111,23 @@ export function LandingPage({ onStartSession, onExplore }: { onStartSession: () 
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.3 }}
-          className="relative w-full max-w-2xl mt-4 z-20"
+          className="relative w-full max-w-2xl mt-4"
         >
           <div className="absolute inset-y-0 left-5 flex items-center pointer-events-none">
             <Search className="w-5 h-5 text-slate-500" />
           </div>
           <input
             type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleManualSearch()}
-            onFocus={() => { if (searchResults.length > 0) setShowResults(true); }}
             placeholder="What do you want to learn today?"
             className="w-full bg-slate-900/80 border border-slate-800 rounded-2xl py-5 pl-14 pr-32 text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all text-lg"
+            onFocus={onExplore}
           />
           <button
-            onClick={handleManualSearch}
+            onClick={onExplore}
             className="absolute right-2 top-2 bottom-2 px-6 bg-violet-600 text-white rounded-xl font-bold hover:bg-violet-500 transition-colors flex items-center gap-2"
           >
             Explore
           </button>
-
-          {/* Search Dropdown Results */}
-          {showResults && searchResults.length > 0 && (
-            <div className="absolute top-full left-0 right-0 mt-2 bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden max-h-60 overflow-y-auto">
-              {searchResults.map((result: any) => (
-                <div
-                  key={result._id}
-                  onClick={() => navigate(`/chat?q=${encodeURIComponent(result.title)}`)}
-                  className="flex items-center gap-3 p-3 hover:bg-slate-800 cursor-pointer transition-colors border-b border-slate-800/50 last:border-0 text-left"
-                >
-                  <div className="w-10 h-6 bg-slate-800 rounded overflow-hidden shrink-0">
-                    {result.thumbnail ? (
-                      <img src={result.thumbnail} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-slate-700">
-                        <PlayCircle className="w-3 h-3 text-slate-400" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-col overflow-hidden">
-                    <span className="text-white text-sm font-medium truncate">{result.title}</span>
-                    <span className="text-xs text-slate-500 truncate">{result.category}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
         </motion.div>
       </div>
 

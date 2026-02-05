@@ -338,8 +338,8 @@ app.post('/api/sessions', async (req, res) => {
 });
 
 // --- FINTERNET PAYMENT GATEWAY ---
-// --- FINTERNET PAYMENT GATEWAY ---
 const FINTERNET_API_KEY = process.env.FINTERNET_API_KEY;
+// UPDATED URL based on User Screenshot (added /api/ before v1)
 const FINTERNET_API_URL = 'https://api.fmm.finternetlab.io/api/v1/payment-intents';
 
 app.post('/api/wallet/topup', async (req, res) => {
@@ -356,8 +356,8 @@ app.post('/api/wallet/topup', async (req, res) => {
     // 1. Create Finternet Payment Intent
     const payload = {
       amount: parseFloat(amount).toFixed(2),
-      currency: 'USD',                          // Changed to USD to match Fiat Postman collection
-      type: 'DELIVERY_VS_PAYMENT',              // Changed to match Postman
+      currency: 'USDC',                         // Keeping USDC as per previous scripts, but URL is the main fix
+      type: 'DELIVERY_VS_PAYMENT',              // Reverted to match Screenshot
       settlementMethod: 'OFF_RAMP_MOCK',
       settlementDestination: 'bank_account_123',
       description: `Topup for ${userId}`
@@ -416,56 +416,53 @@ app.post('/api/wallet/topup', async (req, res) => {
 });
 
 // --- CONFIRMATION ENDPOINT (Called after user pays) ---
+// --- CONFIRMATION ENDPOINT (Called after user pays) ---
 app.post('/api/wallet/confirm', async (req, res) => {
   try {
     const { userId, userModel = 'Student', intentId, amount } = req.body;
 
     console.log(`[Wallet] Confirming Payment: ${intentId} for $${amount}`);
 
-    // Verify Finternet Status (unless Mock)
+    // Verify Finternet Status
     let isConfirmed = false;
 
-    if (intentId && intentId.startsWith('intent_mock_')) {
-      console.log("[Wallet] Mock Payment Confirmed instantly.");
-      isConfirmed = true;
-    } else {
-      try {
-        const checkRes = await fetch(`${FINTERNET_API_URL}/${intentId}`, {
-          method: 'GET',
-          headers: { 'X-API-Key': FINTERNET_API_KEY }
-        });
+    // Status Check URL
+    const checkUrl = `${FINTERNET_API_URL}/${intentId}`;
+    console.log(`[Finternet] Checking Status: ${checkUrl}`);
 
-        if (!checkRes.ok) {
-          throw new Error(`Status check failed: ${checkRes.status}`);
-        }
+    try {
+      const checkRes = await fetch(checkUrl, {
+        method: 'GET',
+        headers: { 'X-API-Key': FINTERNET_API_KEY }
+      });
 
-        const checkData = await checkRes.json();
-        console.log(`[Finternet] Status for ${intentId}: ${checkData.status}`);
+      const rawStatus = await checkRes.text();
+      console.log(`[Finternet] Status Body: ${rawStatus}`);
 
-        // Create a broad list of "Success" states based on user feedback
-        // For Hackathon/Demo: We accept processing/initiated if the user manually confirms
-        // to prevent getting stuck if the gateway callback is slow.
-        const validStatuses = [
-          'SUCCEEDED', 'SETTLED', 'COMPLETED',
-          'DELIVERED', 'AWAITING_SETTLEMENT',
-          'INITIATED', 'PROCESSING', 'PENDING'
-        ];
-
-        if (validStatuses.includes(checkData.status)) {
-          isConfirmed = true;
-        } else {
-          // If strict check fails, check if we are in expected "delivery" state for DvP, 
-          // but for off-ramp mock, it usually goes to SUCCEEDED.
-          // Fallback: If status is INITIATED but user claims success, we might need manual check.
-          return res.status(400).json({ message: `Payment not completed. Status: ${checkData.status}`, status: checkData.status });
-        }
-
-      } catch (checkErr) {
-        console.warn(`[Finternet] Verification failed: ${checkErr.message}.`);
-        // Fallback for Hackathon: If API is blocked/down, we might auto-confirm if user insists
-        // But for "Gateway Logic", we should return error.
-        return res.status(502).json({ message: 'Could not verify payment status with gateway.' });
+      if (!checkRes.ok) {
+        throw new Error(`Status check failed with ${checkRes.status}`);
       }
+
+      const checkData = JSON.parse(rawStatus);
+      const s = checkData.status;
+
+      // Allow SUCCEEDED (funds transferred) or SETTLED (final) or COMPLETED
+      // UPDATED: User requested to credit wallet even if status is PROCESSING (or INITIATED in sandbox)
+      // We explicitly allow 'INITIATED', 'PROCESSING', 'PENDING' to enable immediate wallet updates.
+      const validStatuses = ['SUCCEEDED', 'SETTLED', 'COMPLETED', 'PROCESSING', 'PENDING', 'INITIATED'];
+
+      if (validStatuses.includes(s)) {
+        console.log(`[Wallet] treating status '${s}' as success per user request.`);
+        isConfirmed = true;
+      } else {
+        return res.status(400).json({ message: `Payment failed. Status: ${s}`, status: s });
+      }
+
+    } catch (checkErr) {
+      console.error(`[Finternet] Verification failed: ${checkErr.message}`);
+      // If verification fails entirely (network), we might still want to fail safely.
+      // But if we can't check status, we can't confirm.
+      return res.status(502).json({ message: 'Could not verify payment status with gateway.' });
     }
 
     if (!isConfirmed) return res.status(400).json({ message: 'Payment verification failed' });
@@ -496,7 +493,7 @@ app.post('/api/wallet/confirm', async (req, res) => {
       status: 'completed',
       gateway: 'FINTERNET',
       referenceId: intentId,
-      description: `Wallet top-up (Confirmed)`,
+      description: `Wallet top-up (FINTERNET)`,
     });
 
     console.log(`[Wallet] Credited $${amount} to ${userId}`);
@@ -697,89 +694,28 @@ app.post('/api/ai-chat', async (req, res) => {
     const { query } = req.body;
     if (!query) return res.status(400).json({ message: "Query required" });
 
-    // 0. Smart Keyword Extraction (handle "suggest history courses" -> "History")
-    let searchKey = query;
-    try {
-      const extractionResult = await model.generateContent({
-        contents: [{
-          role: "user", parts: [{
-            text:
-              `Extract the main subject or topic from this user query for a database search. 
-            Query: "${query}"
-            Return ONLY the raw keyword (e.g., "History", "Physics", "React"). Do not add quotes or extra text.
-            If the query is greeting or vague (e.g., "Hi", "help"), return "General".`
-          }]
-        }]
-      });
-      searchKey = extractionResult.response.text().trim();
-      // Fallback if AI gives a sentence
-      if (searchKey.length > 20) searchKey = query;
-      console.log(`[AI Chat] Extracted key: "${searchKey}" from "${query}"`);
-    } catch (err) {
-      console.warn("[AI Chat] Keyword extraction failed, using raw query.");
-    }
+    // 1. Search DB for Context (Basic RAG)
+    const courses = await VideoUrl.find({
+      $or: [
+        { title: { $regex: query, $options: 'i' } },
+        { category: { $regex: query, $options: 'i' } }
+      ]
+    }).limit(5);
 
-    // Skip DB search for purely conversational input
-    const isConversational = ["General", "Hi", "Hello", "Hey"].includes(searchKey);
-
-    // 1. Search DBs in Parallel ONLY if we have a valid topic
-    let sessions = [], videoCourses = [];
-
-    if (!isConversational) {
-      [sessions, videoCourses] = await Promise.all([
-        LiveSession.find({
-          $or: [
-            { topic: { $regex: searchKey, $options: 'i' } },
-            { description: { $regex: searchKey, $options: 'i' } }
-          ],
-          status: { $in: ['scheduled', 'live'] }
-        })
-          .populate('teacherId', 'name subjects')
-          .sort({ startTime: 1 })
-          .limit(3),
-
-        VideoUrl.find({
-          $or: [
-            { title: { $regex: searchKey, $options: 'i' } },
-            { category: { $regex: searchKey, $options: 'i' } }
-          ]
-        }).limit(3)
-      ]);
-    }
-
-    // 2. Prepare Context for Gemini
-    const sessionContext = sessions.map(s => {
-      const teacherName = s.teacherId?.name || 'Unknown Teacher';
-      const time = new Date(s.startTime).toLocaleString();
-      return `- [LIVE] "${s.topic}" with ${teacherName} ($${s.ratePerMinute}/min) at ${time}`;
-    }).join('\n');
-
-    const videoContext = videoCourses.map(v => {
-      return `- [VIDEO] "${v.title}" (${v.category})`;
-    }).join('\n');
-
-    const fullContext = `
-    LIVE SESSIONS:
-    ${sessionContext || "(None)"}
-
-    VIDEO COURSES:
-    ${videoContext || "(None)"}
-    `;
-
+    // 2. Generate Response with Gemini
+    const contextList = courses.map(c => `- ${c.title} (${c.category})`).join('\n');
     const prompt = `
         You are Murph AI, a friendly and knowledgeable educational concierge.
         
         User Query: "${query}"
 
-        Here are the relevant learning resources we found:
-        ${fullContext}
+        Here are the relevant video courses available in our database:
+        ${contextList}
 
         Instructions:
         1. Answer the user's question directly.
-        2. Recommend SPECIFIC resources found above. 
-           - If it's a LIVE session, emphasize the teacher and time.
-           - If it's a VIDEO course, mention it's available anytime.
-        3. If NO matches found in either, apologize and suggest general advice.
+        2. If the courses listed above are relevant, recommend them specifically.
+        3. If no courses match, suggest a general learning path but mention we don't have a specific video for it yet.
         4. Keep the tone encouraging and concise.
         5. You MUST output your response in JSON format with a single key "answer".
         `;
@@ -798,29 +734,10 @@ app.post('/api/ai-chat', async (req, res) => {
       aiResponse = result.response.text();
     }
 
-    // Merge for Frontend Card Display
-    const formattedSessions = sessions.map(s => ({
-      _id: s._id,
-      title: "[LIVE] " + s.topic,
-      category: s.teacherId?.name ? `with ${s.teacherId.name}` : 'Live Session',
-      isLive: true
-    }));
-
-    const formattedVideos = videoCourses.map(v => ({
-      _id: v._id,
-      title: "[VIDEO] " + v.title,
-      category: v.category,
-      isLive: false,
-      thumbnail: v.thumbnail,
-      videoUrl: v.lectures?.[0]?.videoUrl // Send first lecture for quick play
-    }));
-
     res.json({
       text: aiResponse,
-      courses: [...formattedSessions, ...formattedVideos]
+      courses: courses // Send these back so frontend can render cards
     });
-
-
 
   } catch (e) {
     console.error("AI Error:", e);

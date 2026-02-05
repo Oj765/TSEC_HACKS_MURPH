@@ -62,15 +62,13 @@ export function Navbar({ role, onLogout }: NavbarProps) {
           )}
 
           {/* AI CHATBOT TRIGGER */}
-          {role !== 'teacher' && (
-            <button
-              onClick={() => navigate('/ask-ai')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all ${isActive('/ask-ai') ? 'bg-violet-600 border-violet-500 text-white shadow-lg shadow-violet-600/30' : 'bg-slate-800/50 border-slate-700 text-violet-400 hover:bg-slate-800 hover:border-violet-500/50'}`}
-            >
-              <Sparkles className="w-4 h-4" />
-              <span className="font-bold text-xs uppercase tracking-wide">Ask AI</span>
-            </button>
-          )}
+          <button
+            onClick={() => navigate('/ask-ai')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all ${isActive('/ask-ai') ? 'bg-violet-600 border-violet-500 text-white shadow-lg shadow-violet-600/30' : 'bg-slate-800/50 border-slate-700 text-violet-400 hover:bg-slate-800 hover:border-violet-500/50'}`}
+          >
+            <Sparkles className="w-4 h-4" />
+            <span className="font-bold text-xs uppercase tracking-wide">Ask AI</span>
+          </button>
         </div>
 
         {/* RIGHT ACTIONS */}

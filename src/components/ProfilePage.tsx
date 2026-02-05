@@ -39,12 +39,6 @@ export function ProfilePage() {
                     return;
                 }
 
-                if (!userId) {
-                    setError("User ID missing from session");
-                    setLoading(false);
-                    return;
-                }
-
                 const endpoint = role === 'teacher'
                     ? `http://localhost:5000/api/teachers/${userId}/dashboard`
                     : `http://localhost:5000/api/students/${userId}/dashboard`;
