@@ -61,14 +61,51 @@ export function AiChatPage() {
         }
     };
 
+    const [playingVideo, setPlayingVideo] = useState<string | null>(null);
+
+    const getEmbedUrl = (url: string | null) => {
+        if (!url) return '';
+        if (url.includes('youtu.be/')) {
+            const id = url.split('youtu.be/')[1].split('?')[0];
+            return `https://www.youtube.com/embed/${id}?autoplay=1`;
+        }
+        if (url.includes('watch?v=')) {
+            const id = url.split('watch?v=')[1].split('&')[0];
+            return `https://www.youtube.com/embed/${id}?autoplay=1`;
+        }
+        return url;
+    };
+
     return (
         // Main Container: Full height, accounts for Navbar (pt-16)
-        <div className="min-h-screen bg-[#0a0f2b] pt-16 flex flex-col">
+        <div className="min-h-screen bg-[#0a0f2b] pt-16 flex flex-col relative">
+
+            {/* Video Modal */}
+            <AnimatePresence>
+                {playingVideo && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+                        onClick={() => setPlayingVideo(null)}
+                    >
+                        <div className="w-full max-w-4xl aspect-video bg-black rounded-2xl overflow-hidden relative shadow-2xl shadow-violet-500/20">
+                            <iframe
+                                src={getEmbedUrl(playingVideo)}
+                                className="w-full h-full"
+                                frameBorder="0"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
+                            />
+                            <button className="absolute top-4 right-4 text-white hover:text-red-500 bg-black/50 rounded-full p-2">Close</button>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Inner Content Wrapper: Centered horizontally, full height of parent */}
             <div className="flex-1 w-full max-w-3xl mx-auto flex flex-col bg-[#0a0f2b] relative">
-
-
 
                 {/* 2. CHAT BODY ZONE: Scrollable, fills available space */}
                 <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6">
@@ -103,19 +140,29 @@ export function AiChatPage() {
 
                                     {/* Related Courses Grid */}
                                     {msg.courses && msg.courses.length > 0 && (
-                                        <div className="mt-4 grid grid-cols-1 gap-3">
+                                        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
                                             {msg.courses.map((course: any) => (
                                                 <div
                                                     key={course._id}
-                                                    onClick={() => navigate('/chat')}
-                                                    className="bg-slate-900/50 border border-slate-700/50 rounded-xl p-3 hover:border-violet-500/50 hover:bg-slate-800 transition-all cursor-pointer group flex items-center gap-3"
+                                                    onClick={() => course.videoUrl ? setPlayingVideo(course.videoUrl) : navigate('/chat')}
+                                                    className="bg-slate-900/50 border border-slate-700/50 rounded-xl overflow-hidden hover:border-violet-500/50 hover:bg-slate-800 transition-all cursor-pointer group flex flex-col"
                                                 >
-                                                    <div className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center shrink-0 group-hover:bg-violet-600/20">
-                                                        <Play className="w-4 h-4 text-slate-500 group-hover:text-violet-400" />
-                                                    </div>
-                                                    <div className="overflow-hidden">
+                                                    {course.thumbnail ? (
+                                                        <div className="aspect-video relative">
+                                                            <img src={course.thumbnail} alt={course.title} className="w-full h-full object-cover" />
+                                                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                <Play className="w-8 h-8 text-white fill-current" />
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="aspect-video bg-slate-800 flex items-center justify-center">
+                                                            <Play className="w-8 h-8 text-slate-600" />
+                                                        </div>
+                                                    )}
+
+                                                    <div className="p-3">
                                                         <h4 className="text-white font-bold text-sm truncate group-hover:text-violet-300 transition-colors">{course.title}</h4>
-                                                        <span className="text-[10px] text-slate-500 bg-slate-950 px-2 py-0.5 rounded border border-slate-800 inline-block mt-0.5">{course.category}</span>
+                                                        <span className="text-[10px] text-slate-500 bg-slate-950 px-2 py-0.5 rounded border border-slate-800 inline-block mt-1">{course.category}</span>
                                                     </div>
                                                 </div>
                                             ))}

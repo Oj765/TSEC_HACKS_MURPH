@@ -79,7 +79,7 @@ export default function App() {
             <Route element={<PublicLayout role={role} onLogout={handleLogout} />}>
               <Route path="/" element={
                 <LandingPage
-                  onStartSession={() => navigate('/session/demo-123')}
+                  onStartSession={() => navigate('/chat')}
                   onExplore={() => navigate('/explore')}
                 />
               } />

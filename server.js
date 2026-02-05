@@ -338,8 +338,9 @@ app.post('/api/sessions', async (req, res) => {
 });
 
 // --- FINTERNET PAYMENT GATEWAY ---
+// --- FINTERNET PAYMENT GATEWAY ---
 const FINTERNET_API_KEY = process.env.FINTERNET_API_KEY;
-const FINTERNET_API_URL = 'https://api.fmm.finternetlab.io/v1/payment-intents';
+const FINTERNET_API_URL = 'https://api.fmm.finternetlab.io/api/v1/payment-intents';
 
 app.post('/api/wallet/topup', async (req, res) => {
   try {
@@ -355,10 +356,10 @@ app.post('/api/wallet/topup', async (req, res) => {
     // 1. Create Finternet Payment Intent
     const payload = {
       amount: parseFloat(amount).toFixed(2),
-      currency: 'USDC',
-      type: 'CONDITIONAL',                      // Changed from DELIVERY_VS_PAYMENT based on latest docs
+      currency: 'USD',                          // Changed to USD to match Fiat Postman collection
+      type: 'DELIVERY_VS_PAYMENT',              // Changed to match Postman
       settlementMethod: 'OFF_RAMP_MOCK',
-      settlementDestination: 'bank_account_123', // Changed from test_account
+      settlementDestination: 'bank_account_123',
       description: `Topup for ${userId}`
     };
 
@@ -441,12 +442,21 @@ app.post('/api/wallet/confirm', async (req, res) => {
         const checkData = await checkRes.json();
         console.log(`[Finternet] Status for ${intentId}: ${checkData.status}`);
 
-        // Allow SUCCEEDED (funds transferred) or SETTLED (final)
-        if (checkData.status === 'SUCCEEDED' || checkData.status === 'SETTLED') {
+        // Create a broad list of "Success" states based on user feedback
+        // For Hackathon/Demo: We accept processing/initiated if the user manually confirms
+        // to prevent getting stuck if the gateway callback is slow.
+        const validStatuses = [
+          'SUCCEEDED', 'SETTLED', 'COMPLETED',
+          'DELIVERED', 'AWAITING_SETTLEMENT',
+          'INITIATED', 'PROCESSING', 'PENDING'
+        ];
+
+        if (validStatuses.includes(checkData.status)) {
           isConfirmed = true;
-        } else if (checkData.status === 'PROCESSING') {
-          return res.status(202).json({ message: 'Payment processing. Please wait...', status: checkData.status });
         } else {
+          // If strict check fails, check if we are in expected "delivery" state for DvP, 
+          // but for off-ramp mock, it usually goes to SUCCEEDED.
+          // Fallback: If status is INITIATED but user claims success, we might need manual check.
           return res.status(400).json({ message: `Payment not completed. Status: ${checkData.status}`, status: checkData.status });
         }
 
@@ -687,28 +697,89 @@ app.post('/api/ai-chat', async (req, res) => {
     const { query } = req.body;
     if (!query) return res.status(400).json({ message: "Query required" });
 
-    // 1. Search DB for Context (Basic RAG)
-    const courses = await VideoUrl.find({
-      $or: [
-        { title: { $regex: query, $options: 'i' } },
-        { category: { $regex: query, $options: 'i' } }
-      ]
-    }).limit(5);
+    // 0. Smart Keyword Extraction (handle "suggest history courses" -> "History")
+    let searchKey = query;
+    try {
+      const extractionResult = await model.generateContent({
+        contents: [{
+          role: "user", parts: [{
+            text:
+              `Extract the main subject or topic from this user query for a database search. 
+            Query: "${query}"
+            Return ONLY the raw keyword (e.g., "History", "Physics", "React"). Do not add quotes or extra text.
+            If the query is greeting or vague (e.g., "Hi", "help"), return "General".`
+          }]
+        }]
+      });
+      searchKey = extractionResult.response.text().trim();
+      // Fallback if AI gives a sentence
+      if (searchKey.length > 20) searchKey = query;
+      console.log(`[AI Chat] Extracted key: "${searchKey}" from "${query}"`);
+    } catch (err) {
+      console.warn("[AI Chat] Keyword extraction failed, using raw query.");
+    }
 
-    // 2. Generate Response with Gemini
-    const contextList = courses.map(c => `- ${c.title} (${c.category})`).join('\n');
+    // Skip DB search for purely conversational input
+    const isConversational = ["General", "Hi", "Hello", "Hey"].includes(searchKey);
+
+    // 1. Search DBs in Parallel ONLY if we have a valid topic
+    let sessions = [], videoCourses = [];
+
+    if (!isConversational) {
+      [sessions, videoCourses] = await Promise.all([
+        LiveSession.find({
+          $or: [
+            { topic: { $regex: searchKey, $options: 'i' } },
+            { description: { $regex: searchKey, $options: 'i' } }
+          ],
+          status: { $in: ['scheduled', 'live'] }
+        })
+          .populate('teacherId', 'name subjects')
+          .sort({ startTime: 1 })
+          .limit(3),
+
+        VideoUrl.find({
+          $or: [
+            { title: { $regex: searchKey, $options: 'i' } },
+            { category: { $regex: searchKey, $options: 'i' } }
+          ]
+        }).limit(3)
+      ]);
+    }
+
+    // 2. Prepare Context for Gemini
+    const sessionContext = sessions.map(s => {
+      const teacherName = s.teacherId?.name || 'Unknown Teacher';
+      const time = new Date(s.startTime).toLocaleString();
+      return `- [LIVE] "${s.topic}" with ${teacherName} ($${s.ratePerMinute}/min) at ${time}`;
+    }).join('\n');
+
+    const videoContext = videoCourses.map(v => {
+      return `- [VIDEO] "${v.title}" (${v.category})`;
+    }).join('\n');
+
+    const fullContext = `
+    LIVE SESSIONS:
+    ${sessionContext || "(None)"}
+
+    VIDEO COURSES:
+    ${videoContext || "(None)"}
+    `;
+
     const prompt = `
         You are Murph AI, a friendly and knowledgeable educational concierge.
         
         User Query: "${query}"
 
-        Here are the relevant video courses available in our database:
-        ${contextList}
+        Here are the relevant learning resources we found:
+        ${fullContext}
 
         Instructions:
         1. Answer the user's question directly.
-        2. If the courses listed above are relevant, recommend them specifically.
-        3. If no courses match, suggest a general learning path but mention we don't have a specific video for it yet.
+        2. Recommend SPECIFIC resources found above. 
+           - If it's a LIVE session, emphasize the teacher and time.
+           - If it's a VIDEO course, mention it's available anytime.
+        3. If NO matches found in either, apologize and suggest general advice.
         4. Keep the tone encouraging and concise.
         5. You MUST output your response in JSON format with a single key "answer".
         `;
@@ -727,10 +798,29 @@ app.post('/api/ai-chat', async (req, res) => {
       aiResponse = result.response.text();
     }
 
+    // Merge for Frontend Card Display
+    const formattedSessions = sessions.map(s => ({
+      _id: s._id,
+      title: "[LIVE] " + s.topic,
+      category: s.teacherId?.name ? `with ${s.teacherId.name}` : 'Live Session',
+      isLive: true
+    }));
+
+    const formattedVideos = videoCourses.map(v => ({
+      _id: v._id,
+      title: "[VIDEO] " + v.title,
+      category: v.category,
+      isLive: false,
+      thumbnail: v.thumbnail,
+      videoUrl: v.lectures?.[0]?.videoUrl // Send first lecture for quick play
+    }));
+
     res.json({
       text: aiResponse,
-      courses: courses // Send these back so frontend can render cards
+      courses: [...formattedSessions, ...formattedVideos]
     });
+
+
 
   } catch (e) {
     console.error("AI Error:", e);

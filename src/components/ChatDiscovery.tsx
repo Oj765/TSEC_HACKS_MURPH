@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Play, BookOpen, ChevronRight, Layout, MonitorPlay, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useSearchParams } from 'react-router-dom';
 
 interface Lecture {
   lectureNumber: number;
@@ -35,9 +36,40 @@ export function ChatDiscovery({ onStartSession }: { onStartSession?: () => void 
       .catch(err => console.error("Failed to fetch categories", err));
   }, []);
 
+  // Handle Query Param for Auto-Selection (e.g., from Search)
+  const [searchParams] = useSearchParams();
+  const queryCourse = searchParams.get('q');
+
+  useEffect(() => {
+    if (queryCourse) {
+      setLoading(true);
+      // Search for the specific course by title
+      fetch(`http://localhost:5000/api/search?q=${encodeURIComponent(queryCourse)}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.length > 0) {
+            // Find the exact match or fall back to first result
+            const match = data.find((c: Course) => c.title === queryCourse) || data[0];
+            if (match) {
+              setSelectedCategory(match.category); // also expand category
+              setActiveCourse(match);
+              if (match.lectures && match.lectures.length > 0) {
+                setActiveLecture(match.lectures[0]);
+              }
+            }
+          }
+          setLoading(false);
+        })
+        .catch(err => {
+          console.error("Failed to load query course", err);
+          setLoading(false);
+        })
+    }
+  }, [queryCourse]);
+
   // Fetch Courses
   useEffect(() => {
-    if (selectedCategory) {
+    if (selectedCategory && !queryCourse) { // Only fetch category list if NOT in query mode
       setLoading(true);
       fetch(`http://localhost:5000/api/videos/category/${encodeURIComponent(selectedCategory)}`)
         .then(res => res.json())
