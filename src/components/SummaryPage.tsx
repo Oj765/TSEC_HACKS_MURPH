@@ -12,6 +12,7 @@ interface SummaryData {
 
 export function SummaryPage({ data, onFinish }: { data: SummaryData, onFinish: () => void }) {
   const [rating, setRating] = useState(0);
+  const [hoverRating, setHoverRating] = useState(0);
   const [feedback, setFeedback] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAIValidation, setShowAIValidation] = useState(false);
@@ -68,11 +69,11 @@ export function SummaryPage({ data, onFinish }: { data: SummaryData, onFinish: (
         animate={{ opacity: 1, scale: 1 }}
         className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl"
       >
-        <div className="p-8 text-center border-b border-slate-800 relative">
-          <div className="absolute -top-10 left-1/2 -translate-x-1/2 w-20 h-20 bg-green-500 rounded-full flex items-center justify-center border-4 border-[#0a0f2b] shadow-xl">
+        <div className="p-8 text-center border-b border-slate-800">
+          <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center shadow-xl mx-auto mb-6">
             <CheckCircle2 className="w-10 h-10 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-white mt-8">Session Completed!</h1>
+          <h1 className="text-2xl font-bold text-white">Session Completed!</h1>
           <p className="text-slate-400 mt-2">You just learned something new with <span className="text-violet-400 font-bold">{data.teacherName || 'Instructor'}</span></p>
         </div>
 
@@ -98,14 +99,21 @@ export function SummaryPage({ data, onFinish }: { data: SummaryData, onFinish: (
             <div className="space-y-6">
               <div className="flex flex-col items-center gap-4">
                 <h3 className="text-slate-300 font-bold uppercase tracking-widest text-xs">Rate your experience</h3>
-                <div className="flex gap-2">
+                <div className="flex gap-2" onMouseLeave={() => setHoverRating(0)}>
                   {[1, 2, 3, 4, 5].map((star) => (
                     <button
                       key={star}
                       onClick={() => setRating(star)}
-                      className={`transition-all transform hover:scale-110 ${star <= rating ? 'text-yellow-400' : 'text-slate-700'}`}
+                      onMouseEnter={() => setHoverRating(star)}
+                      className={`transition-all transform hover:scale-110 p-1 ${star <= (hoverRating || rating)
+                        ? 'text-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]'
+                        : 'text-slate-700 hover:text-slate-500'
+                        }`}
                     >
-                      <Star className={`w-10 h-10 ${star <= rating ? 'fill-current' : ''}`} />
+                      <Star
+                        className={`w-10 h-10 ${star <= (hoverRating || rating) ? 'fill-current' : ''
+                          }`}
+                      />
                     </button>
                   ))}
                 </div>

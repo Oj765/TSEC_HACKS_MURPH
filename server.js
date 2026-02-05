@@ -21,8 +21,8 @@ const VideoUrl = require('./models/VideoUrl');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 // Initialize Gemini
-const genAI = new GoogleGenerativeAI("AIzaSyCWCqh9Ls7OUFmHz0tvxdqbmT6fxD1xoNs");
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -34,10 +34,20 @@ connectDB();
 app.use(express.json());
 app.use(
   cors({
-    origin: 'http://localhost:3000', // Vite dev URL (configured in vite.config.ts)
+    origin: [
+      'http://localhost:3000', 'http://127.0.0.1:3000',
+      'http://localhost:3001', 'http://127.0.0.1:3001',
+      'http://localhost:5173', 'http://127.0.0.1:5173'
+    ],
     credentials: true,
   })
 );
+
+// Logging Middleware
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  next();
+});
 
 // Simple health check route
 app.get('/api/health', (req, res) => {
@@ -204,23 +214,26 @@ app.get('/api/teachers/:id/dashboard', async (req, res) => {
     // Handle both MongoDB ObjectIds and custom string IDs
     let earningsData = [];
     try {
-      const matchUserId = mongoose.Types.ObjectId.isValid(id) && id.length === 24
-        ? new mongoose.Types.ObjectId(id)
-        : id;
+      // userId in Transaction is Type String (to support custom IDs). 
+      // Do NOT convert to ObjectId, even if it looks like one.
+      const matchUserId = id;
 
-      earningsData = await Transaction.aggregate([
+      // Aggregate Earnings from SESSIONS (Historical Data)
+      // This ensures the chart matches the "Past Sessions" table.
+      // Aggregate Earnings from SESSIONS (Historical Data)
+      // This ensures the chart matches the "Past Sessions" table.
+
+      earningsData = await Session.aggregate([
         {
           $match: {
-            userId: matchUserId,
-            userModel: 'Teacher',
-            type: 'credit',
+            teacherId: matchUserId,
             status: 'completed',
           },
         },
         {
           $group: {
-            _id: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } },
-            amount: { $sum: '$amount' },
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$startTime' } },
+            amount: { $sum: '$totalCost' },
           },
         },
         {
@@ -230,6 +243,7 @@ app.get('/api/teachers/:id/dashboard', async (req, res) => {
             amount: 1,
           },
         },
+        { $sort: { name: 1 } } // Sort by date ascending
       ]);
     } catch (aggErr) {
       console.warn('Earnings aggregation failed:', aggErr.message);
@@ -324,54 +338,141 @@ app.post('/api/sessions', async (req, res) => {
 });
 
 // --- FINTERNET PAYMENT GATEWAY ---
-const FINTERNET_API_KEY = 'sk_hackathon_7c4bd4b69a82287aa021a3c6f3770307';
-// Updated to probable endpoint based on documentation
-const FINTERNET_API_URL = 'https://api.fmm.finternetlab.io/v1/payment_intents';
+const FINTERNET_API_KEY = process.env.FINTERNET_API_KEY;
+const FINTERNET_API_URL = 'https://api.fmm.finternetlab.io/v1/payment-intents';
 
 app.post('/api/wallet/topup', async (req, res) => {
   try {
-    const { userId, userModel, amount, paymentDetails } = req.body; // userModel: 'Student' or 'Teacher'
+    const { userId, userModel = 'Student', amount } = req.body;
 
-    if (!userId || !amount) {
-      return res.status(400).json({ message: 'Missing userId or amount' });
+    if (!userId || !amount || isNaN(amount)) {
+      return res.status(400).json({ message: 'Invalid userId or amount' });
     }
 
-    // Mask card for logging
-    const maskedCard = paymentDetails?.cardNumber ? `**** **** **** ${paymentDetails.cardNumber.slice(-4)}` : 'Unknown';
-    console.log(`Processing Finternet payment for ${userId}, Amount: ${amount}, Card: ${maskedCard}`);
+    console.log(`[Wallet] Top-up Intent → User: ${userId}, Amount: ${amount}`);
+    console.log(`[Finternet] Key Status: ${FINTERNET_API_KEY ? 'Loaded' : 'MISSING'}`);
 
-    // 1. Call External Finternet API (Simulated)
-    // In a real scenario, you would perform a fetch to their API here.
-    /*
-    const paymentRes = await fetch(FINTERNET_API_URL, {
+    // 1. Create Finternet Payment Intent
+    const payload = {
+      amount: parseFloat(amount).toFixed(2),
+      currency: 'USDC',
+      type: 'CONDITIONAL',                      // Changed from DELIVERY_VS_PAYMENT based on latest docs
+      settlementMethod: 'OFF_RAMP_MOCK',
+      settlementDestination: 'bank_account_123', // Changed from test_account
+      description: `Topup for ${userId}`
+    };
+
+    console.log('[Finternet] Endpoint:', FINTERNET_API_URL);
+    console.log('[Finternet] Payload:', payload);
+
+    let paymentUrl, intentId;
+
+    try {
+      const paymentRes = await fetch(FINTERNET_API_URL, {
         method: 'POST',
         headers: {
-            'Authorization': `Bearer ${FINTERNET_API_KEY}`, // or X-API-Key based on docs
-            'Content-Type': 'application/json'
+          'X-API-Key': FINTERNET_API_KEY,
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
-            amount: amount * 100, // Cents
-            currency: 'USD', 
-            payment_method_data: {
-                type: 'card',
-                card: { number: paymentDetails.cardNumber, ... }
-            }
-        })    });
-    if (!paymentRes.ok) throw new Error('Payment Gateway Failed');
-    */
+        body: JSON.stringify(payload),
+      });
 
-    // SIMULATION: We assume payment success for Hackathon demo
-    const transactionId = 'fint_' + crypto.randomBytes(8).toString('hex');
+      const rawText = await paymentRes.text();
+      // console.log('[Finternet] Response:', rawText);
 
-    // 2. Update User Wallet
-    let user;
-    if (userModel === 'Teacher') {
-      user = await Teacher.findById(userId);
-    } else {
-      user = await Student.findById(userId);
+      if (!paymentRes.ok) {
+        throw new Error(`Gateway Error ${paymentRes.status}: ${rawText}`);
+      }
+
+      const gatewayData = JSON.parse(rawText);
+      intentId = gatewayData.id;
+      // Construct payment URL if not in response data
+      paymentUrl = gatewayData.data?.paymentUrl || `https://pay.fmm.finternetlab.io/?intent=${intentId}`;
+
+      console.log('[Finternet] Intent Created:', intentId);
+      console.log('[Finternet] Status:', gatewayData.status);
+
+    } catch (gatewayErr) {
+      console.error(`[Finternet] Gateway Failed: ${gatewayErr.message}`);
+      return res.status(502).json({
+        message: `Finternet Gateway Error: ${gatewayErr.message}`
+      });
     }
 
+    // 2. Respond
+    res.json({
+      success: true,
+      action: 'redirect',
+      paymentUrl,
+      intentId,
+      originalAmount: parseFloat(amount)
+    });
+
+  } catch (err) {
+    console.error('[Wallet] Top-up Error:', err);
+    res.status(500).json({ message: 'Payment initiation failed' });
+  }
+});
+
+// --- CONFIRMATION ENDPOINT (Called after user pays) ---
+app.post('/api/wallet/confirm', async (req, res) => {
+  try {
+    const { userId, userModel = 'Student', intentId, amount } = req.body;
+
+    console.log(`[Wallet] Confirming Payment: ${intentId} for $${amount}`);
+
+    // Verify Finternet Status (unless Mock)
+    let isConfirmed = false;
+
+    if (intentId && intentId.startsWith('intent_mock_')) {
+      console.log("[Wallet] Mock Payment Confirmed instantly.");
+      isConfirmed = true;
+    } else {
+      try {
+        const checkRes = await fetch(`${FINTERNET_API_URL}/${intentId}`, {
+          method: 'GET',
+          headers: { 'X-API-Key': FINTERNET_API_KEY }
+        });
+
+        if (!checkRes.ok) {
+          throw new Error(`Status check failed: ${checkRes.status}`);
+        }
+
+        const checkData = await checkRes.json();
+        console.log(`[Finternet] Status for ${intentId}: ${checkData.status}`);
+
+        // Allow SUCCEEDED (funds transferred) or SETTLED (final)
+        if (checkData.status === 'SUCCEEDED' || checkData.status === 'SETTLED') {
+          isConfirmed = true;
+        } else if (checkData.status === 'PROCESSING') {
+          return res.status(202).json({ message: 'Payment processing. Please wait...', status: checkData.status });
+        } else {
+          return res.status(400).json({ message: `Payment not completed. Status: ${checkData.status}`, status: checkData.status });
+        }
+
+      } catch (checkErr) {
+        console.warn(`[Finternet] Verification failed: ${checkErr.message}.`);
+        // Fallback for Hackathon: If API is blocked/down, we might auto-confirm if user insists
+        // But for "Gateway Logic", we should return error.
+        return res.status(502).json({ message: 'Could not verify payment status with gateway.' });
+      }
+    }
+
+    if (!isConfirmed) return res.status(400).json({ message: 'Payment verification failed' });
+
+    // 1. Load User
+    const user = userModel === 'Teacher'
+      ? await Teacher.findById(userId)
+      : await Student.findById(userId);
+
     if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // 2. Credit Wallet
+    // Prevent double crediting: Check if transaction exists
+    const existingTx = await Transaction.findOne({ referenceId: intentId });
+    if (existingTx) {
+      return res.json({ success: true, message: 'Already credited', walletBalance: user.walletBalance });
+    }
 
     user.walletBalance += parseFloat(amount);
     await user.save();
@@ -379,23 +480,25 @@ app.post('/api/wallet/topup', async (req, res) => {
     // 3. Record Transaction
     await Transaction.create({
       userId,
-      userModel: userModel || 'Student',
+      userModel: userModel,
       amount: parseFloat(amount),
       type: 'credit',
       status: 'completed',
-      description: `Wallet top-up via Finternet (${transactionId})`
+      gateway: 'FINTERNET',
+      referenceId: intentId,
+      description: `Wallet top-up (Confirmed)`,
     });
+
+    console.log(`[Wallet] Credited $${amount} to ${userId}`);
 
     res.json({
       success: true,
-      message: 'Top-up successful',
-      walletBalance: user.walletBalance,
-      transactionId
+      walletBalance: user.walletBalance
     });
 
   } catch (err) {
-    console.error('Payment Error:', err);
-    res.status(500).json({ message: 'Payment processing failed' });
+    console.error('[Wallet] Confirmation Error:', err);
+    res.status(500).json({ message: 'Confirmation failed' });
   }
 });
 
@@ -522,6 +625,17 @@ app.post('/api/sessions/review', async (req, res) => {
       teacher.ratingAvg = parseFloat(newAvg.toFixed(2));
 
       await teacher.save();
+
+      // Record Earning Transaction for Analytics
+      await Transaction.create({
+        userId: liveSession.teacherId,
+        userModel: 'Teacher',
+        amount: totalCost,
+        type: 'credit',
+        status: 'completed',
+        sessionId: sessionId,
+        description: `Session earning: ${liveSession.topic}`
+      });
     }
 
     // 3. Remove from Live/Upcoming
@@ -596,10 +710,22 @@ app.post('/api/ai-chat', async (req, res) => {
         2. If the courses listed above are relevant, recommend them specifically.
         3. If no courses match, suggest a general learning path but mention we don't have a specific video for it yet.
         4. Keep the tone encouraging and concise.
+        5. You MUST output your response in JSON format with a single key "answer".
         `;
 
-    const result = await model.generateContent(prompt);
-    const aiResponse = result.response.text();
+    const result = await model.generateContent({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: "application/json" }
+    });
+
+    let aiResponse;
+    try {
+      const jsonResponse = JSON.parse(result.response.text());
+      aiResponse = jsonResponse.answer;
+    } catch (parseError) {
+      console.warn("Failed to parse JSON from Gemini, using raw text", parseError);
+      aiResponse = result.response.text();
+    }
 
     res.json({
       text: aiResponse,

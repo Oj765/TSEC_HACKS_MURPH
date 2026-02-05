@@ -17,11 +17,12 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { ChatDiscovery } from './components/ChatDiscovery';
 import { SessionCheck } from './components/SessionCheck';
 import { AiChatPage } from './components/AiChatPage';
+import { ProfilePage } from './components/ProfilePage';
 import {
   ExplorePage, RegisterPage,
-  ProfilePage, SessionHistoryPage,
+  SessionHistoryPage,
   SessionDetails, SessionReview,
-  TeacherSessions, TeacherEarnings, TeacherProfile
+  TeacherSessions, TeacherEarnings
 } from './components/PlaceholderPages';
 
 type UserRole = 'guest' | 'student' | 'teacher' | 'admin';
@@ -49,7 +50,7 @@ export default function App() {
   const handleLogin = (selectedRole: UserRole) => {
     setRole(selectedRole);
     if (selectedRole === 'student') navigate('/');
-    if (selectedRole === 'teacher') navigate('/teacher/dashboard');
+    if (selectedRole === 'teacher') navigate('/teachers/dashboard');
     if (selectedRole === 'admin') navigate('/admin');
   };
 
@@ -110,11 +111,11 @@ export default function App() {
             </Route>
 
             {/* --- Teacher Routes --- */}
-            <Route path="/teacher" element={<TeacherLayout role={role} onLogout={handleLogout} />}>
+            <Route path="/teachers" element={<TeacherLayout role={role} onLogout={handleLogout} />}>
               <Route path="dashboard" element={<TeacherDashboard />} />
               <Route path="sessions" element={<TeacherSessions />} />
               <Route path="earnings" element={<TeacherEarnings />} />
-              <Route path="profile" element={<TeacherProfile />} />
+              <Route path="profile" element={<ProfilePage />} />
             </Route>
 
             {/* --- Admin --- */}

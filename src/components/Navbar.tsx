@@ -54,8 +54,8 @@ export function Navbar({ role, onLogout }: NavbarProps) {
           )}
           {role === 'teacher' && (
             <button
-              onClick={() => navigate('/dashboard')}
-              className={`hover:text-white transition-colors ${isActive('/dashboard') ? 'text-white font-bold' : ''}`}
+              onClick={() => navigate('/teachers/dashboard')}
+              className={`hover:text-white transition-colors ${isActive('/teachers/dashboard') ? 'text-white font-bold' : ''}`}
             >
               Teacher Dashboard
             </button>
@@ -79,7 +79,10 @@ export function Navbar({ role, onLogout }: NavbarProps) {
           >
             Logout
           </button>
-          <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center">
+          <div
+            onClick={() => navigate(role === 'teacher' ? '/teachers/profile' : '/profile')}
+            className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center cursor-pointer hover:bg-slate-700 transition-colors"
+          >
             <User className="w-5 h-5 text-slate-400" />
           </div>
           <button className="md:hidden text-slate-300">

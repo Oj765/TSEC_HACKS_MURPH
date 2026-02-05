@@ -99,17 +99,22 @@ export function TeacherDashboard() {
     fetchDashboard();
   }, []);
 
-  const fallbackEarnings: EarningsPoint[] = [
-    { name: 'Mon', amount: 120 },
-    { name: 'Tue', amount: 240 },
-    { name: 'Wed', amount: 180 },
-    { name: 'Thu', amount: 310 },
-    { name: 'Fri', amount: 280 },
-    { name: 'Sat', amount: 150 },
-    { name: 'Sun', amount: 190 },
-  ];
+  // Generate last 7 days with 0 earnings for accurate "No Data" view
+  const getLast7Days = () => {
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      // Match the server format or use simplified display
+      days.push({
+        name: d.toLocaleDateString('en-US', { weekday: 'short' }),
+        amount: 0
+      });
+    }
+    return days;
+  };
 
-  const earningsData = data?.earningsData?.length ? data.earningsData : fallbackEarnings;
+  const earningsData = data?.earningsData?.length ? data.earningsData : getLast7Days();
 
   const stats = data
     ? [
